@@ -1,0 +1,11 @@
+{
+  "telegram_bot_token": "9131177750:AAGdziS5CSteFcyTUsJw4LDxgrWdHfGpXcU",
+  "telegram_chat_id": "8935777270",
+  "min_confluence_score": 70,
+  "scan_interval_seconds": 60,
+  "assets": [
+    "XAUUSD",
+    "BTCUSD"
+  ],
+  "timeframe": "15m"
+}
