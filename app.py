@@ -158,11 +158,11 @@ st.sidebar.title("🦅 PHEARA PRO TRADER")
 st.sidebar.caption("TradingView Live • Telegram Bot Signal Auto-Drop")
 
 # Asset & Timeframe Selection
-asset = st.sidebar.selectbox("ឧបករណ៍ជួញដូរ (Asset):", ["XAUUSD", "BTCUSD"], index=0)
+asset = st.sidebar.selectbox("ឧបករណ៍ជួញដូរ (Asset):", ["BTCUSD", "XAUUSD"], index=0)
 timeframe = st.sidebar.selectbox("ពេលវេលា (Timeframe):", ["15m", "1h", "4h", "1d"], index=0)
 
-tv_symbol_code = "FX:XAUUSD" if asset == "XAUUSD" else "BITSTAMP:BTCUSD"
-tv_display_name = "FXCM:XAUUSD (Spot Gold)" if asset == "XAUUSD" else "BITSTAMP:BTCUSD (Spot Bitcoin)"
+tv_symbol_code = "BITSTAMP:BTCUSD" if asset == "BTCUSD" else "FX:XAUUSD"
+tv_display_name = "BITSTAMP:BTCUSD (Spot Bitcoin)" if asset == "BTCUSD" else "FXCM:XAUUSD (Spot Gold)"
 tv_interval_code = {"15m": "15", "1h": "60", "4h": "240", "1d": "D"}.get(timeframe, "15")
 
 st.sidebar.success(f"📡 Verified Feed: **{tv_display_name}**")
@@ -299,33 +299,11 @@ def get_card_data(sym: str, tf: str):
         print(f"[Error] get_card_data({sym}, {tf}): {err}")
         return None, None
 
-# Compute for all 3 cards: XAUUSD 15m, BTCUSD 15m, XAUUSD/BTCUSD 4h
-card_cols = st.columns(3)
+# Compute for the 2 primary assets: BTCUSD 15m & XAUUSD 15m
+card_cols = st.columns(2)
 
-# Card 1: XAUUSD 15m Scalping
+# Card 1: BTCUSD 15m Scalping
 with card_cols[0]:
-    if asset == "XAUUSD" and timeframe == "15m":
-        xau_ana, xau_ind = analysis_result, indicator_regime
-    else:
-        xau_ana, xau_ind = get_card_data("XAUUSD", "15m")
-    if xau_ana and xau_ind:
-        st.markdown(generate_signal_card_html("XAUUSD", "15m", xau_ana, xau_ind, "LIVE ACTIVE"), unsafe_allow_html=True)
-        if st.button("✈️ Drop XAUUSD to Telegram", key="drop_xau_btn", use_container_width=True):
-            if bot.is_configured():
-                res = bot.dispatch_trade_signal("XAUUSD", "15m", xau_ana, xau_ind)
-                if res.get("status") == "SUCCESS":
-                    st.success("🎉 សញ្ញា XAUUSD ត្រូវបានទម្លាក់ចូល Telegram Bot ជោគជ័យ!")
-                elif res.get("status") == "BLOCKED":
-                    st.warning(f"⚠️ {res.get('message')}")
-                else:
-                    st.error(f"❌ បរាជ័យ: {res.get('message')}")
-            else:
-                st.warning("⚠️ សូមបញ្ចូល Bot Token & Chat ID នៅ Sidebar ខាងឆ្វេងជាមុនសិន!")
-    else:
-        st.info("Loading XAUUSD Signal Card...")
-
-# Card 2: BTCUSD 15m Scalping
-with card_cols[1]:
     if asset == "BTCUSD" and timeframe == "15m":
         btc_ana, btc_ind = analysis_result, indicator_regime
     else:
@@ -346,20 +324,19 @@ with card_cols[1]:
     else:
         st.info("Loading BTCUSD Signal Card...")
 
-# Card 3: Macro 4H Swing Card (Context)
-with card_cols[2]:
-    swing_asset = asset
-    if timeframe == "4h":
-        sw_ana, sw_ind = analysis_result, indicator_regime
+# Card 2: XAUUSD 15m Scalping
+with card_cols[1]:
+    if asset == "XAUUSD" and timeframe == "15m":
+        xau_ana, xau_ind = analysis_result, indicator_regime
     else:
-        sw_ana, sw_ind = get_card_data(swing_asset, "4h")
-    if sw_ana and sw_ind:
-        st.markdown(generate_signal_card_html(swing_asset, "4h", sw_ana, sw_ind, "SWING CONTEXT"), unsafe_allow_html=True)
-        if st.button(f"✈️ Drop {swing_asset} 4H to Telegram", key="drop_sw_btn", use_container_width=True):
+        xau_ana, xau_ind = get_card_data("XAUUSD", "15m")
+    if xau_ana and xau_ind:
+        st.markdown(generate_signal_card_html("XAUUSD", "15m", xau_ana, xau_ind, "LIVE ACTIVE"), unsafe_allow_html=True)
+        if st.button("✈️ Drop XAUUSD to Telegram", key="drop_xau_btn", use_container_width=True):
             if bot.is_configured():
-                res = bot.dispatch_trade_signal(swing_asset, "4h", sw_ana, sw_ind)
+                res = bot.dispatch_trade_signal("XAUUSD", "15m", xau_ana, xau_ind)
                 if res.get("status") == "SUCCESS":
-                    st.success(f"🎉 សញ្ញា {swing_asset} 4H ត្រូវបានទម្លាក់ចូល Telegram Bot ជោគជ័យ!")
+                    st.success("🎉 សញ្ញា XAUUSD ត្រូវបានទម្លាក់ចូល Telegram Bot ជោគជ័យ!")
                 elif res.get("status") == "BLOCKED":
                     st.warning(f"⚠️ {res.get('message')}")
                 else:
@@ -367,16 +344,15 @@ with card_cols[2]:
             else:
                 st.warning("⚠️ សូមបញ្ចូល Bot Token & Chat ID នៅ Sidebar ខាងឆ្វេងជាមុនសិន!")
     else:
-        st.info(f"Loading {swing_asset} 4H Swing Card...")
+        st.info("Loading XAUUSD Signal Card...")
 
 # -------------------------------------------------------------
 # 🤖 AUTO-DISPATCH CONFLUENT SIGNALS DIRECTLY TO TELEGRAM
 # -------------------------------------------------------------
 if bot.is_configured() and auto_drop_enabled:
     auto_items = [
-        ("XAUUSD", "15m", xau_ana, xau_ind),
         ("BTCUSD", "15m", btc_ana, btc_ind),
-        (swing_asset, "4h", sw_ana, sw_ind)
+        ("XAUUSD", "15m", xau_ana, xau_ind)
     ]
     for c_sym, c_tf, c_ana, c_ind in auto_items:
         if c_ana and c_ind:

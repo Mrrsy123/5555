@@ -63,7 +63,7 @@ def run_scanner_loop():
     chat_id = cfg.get("telegram_chat_id", "").strip()
     min_score = cfg.get("min_confluence_score", 70)
     interval = cfg.get("scan_interval_seconds", 60)
-    assets = cfg.get("assets", ["XAUUSD", "BTCUSD"])
+    assets = ["BTCUSD", "XAUUSD"]
     timeframe = cfg.get("timeframe", "15m")
     
     # Render / Cloud Port Binding

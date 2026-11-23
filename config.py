@@ -14,7 +14,7 @@ DEFAULT_CONFIG = {
     "telegram_chat_id": "",
     "min_confluence_score": 70,
     "scan_interval_seconds": 60,
-    "assets": ["XAUUSD", "BTCUSD"],
+    "assets": ["BTCUSD", "XAUUSD"],
     "timeframe": "15m"
 }
 
