@@ -1,0 +1,20 @@
+services:
+  # Pheara Pro Trader AI - 24/7 Cloud Signal Scanner
+  - type: web
+    name: pheara-pro-trader-scanner
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scanner_daemon.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: MIN_CONFLUENCE_SCORE
+        value: "70"
+      - key: SCAN_INTERVAL_SECONDS
+        value: "60"
+      - key: PYTHON_VERSION
+        value: "3.11.8"
