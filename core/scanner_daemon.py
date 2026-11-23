@@ -1,0 +1,223 @@
+"""
+Auto-Scanner Daemon for Pheara Pro Trader AI
+Continuously monitors FXCM:XAUUSD and BITSTAMP:BTCUSD on 15m.
+Automatically drops signals into Telegram Bot on Grade A+ Setups.
+"""
+
+import time
+import sys
+import os
+import json
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime
+import pytz
+from rich.console import Console
+from rich.panel import Panel
+from rich.markup import escape
+
+from config import load_config
+from core.data_fetcher import fetch_market_data
+from core.indicators import calculate_technical_indicators, analyze_indicator_telemetry
+from core.smc_engine import (
+    find_swings, detect_fvgs, detect_market_structure,
+    detect_order_blocks, calculate_dealing_range, detect_liquidity_sweeps, check_ict_killzone
+)
+from core.ai_analyst import LocalAIAnalyst
+from core.telegram_bot import TelegramSignalBot
+from core.trade_tracker import monitor_trade_outcomes
+
+console = Console()
+
+# Keep track of dispatched signals to prevent duplicate spam
+dispatched_signals = {}  # key: (symbol, candle_time), value: direction
+
+class CloudHealthHandler(BaseHTTPRequestHandler):
+    """Lightweight HTTP endpoint for Render / Cloud health probes"""
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        body = {
+            "status": "ONLINE",
+            "service": "Pheara Pro Trader AI Cloud Scanner",
+            "uptime_utc": datetime.now(pytz.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+            "message": "Autonomous 24/7 scanning active for XAUUSD & BTCUSD"
+        }
+        self.wfile.write(json.dumps(body).encode('utf-8'))
+        
+    def log_message(self, format, *args):
+        return
+
+def start_cloud_health_server(port: int):
+    try:
+        server = HTTPServer(('0.0.0.0', port), CloudHealthHandler)
+        console.print(f"[bold green]🌐 Cloud Health-Check HTTP server running on 0.0.0.0:{port}[/bold green]")
+        server.serve_forever()
+    except Exception as e:
+        console.print(f"[yellow]Cloud HTTP server notice: {e}[/yellow]")
+
+def run_scanner_loop():
+    cfg = load_config()
+    token = cfg.get("telegram_bot_token", "").strip()
+    chat_id = cfg.get("telegram_chat_id", "").strip()
+    min_score = cfg.get("min_confluence_score", 70)
+    interval = cfg.get("scan_interval_seconds", 60)
+    
+    # Dual Institutional Scanning Matrix:
+    # 1H (Primary High-Conviction / Low Fakeout) + 15M (Intraday Scalp)
+    scan_targets = [
+        ("BTCUSD", "1h"),
+        ("XAUUSD", "1h"),
+        ("BTCUSD", "15m"),
+        ("XAUUSD", "15m"),
+    ]
+    
+    # Render / Cloud Port Binding
+    port_env = os.environ.get("PORT")
+    if port_env:
+        try:
+            http_port = int(port_env)
+            t = threading.Thread(target=start_cloud_health_server, args=(http_port,), daemon=True)
+            t.start()
+        except Exception as e:
+            console.print(f"[yellow]Notice starting port listener: {e}[/yellow]")
+    
+    bot = TelegramSignalBot(token, chat_id)
+    
+    bot_color = "green" if bot.is_configured() else "red"
+    bot_label = "Configured" if bot.is_configured() else "Missing Token or Chat ID"
+    
+    console.print(Panel(
+        f"[bold cyan]🦅 PHEARA PRO TRADER AI - AUTO SIGNAL SCANNER[/bold cyan]\n"
+        f"• Assets: [yellow]BTCUSD & XAUUSD[/yellow]\n"
+        f"• Timeframes: [green]1H (Primary Low Fakeout) & 15M (Scalp)[/green]\n"
+        f"• Min Confluence Score: [magenta]{min_score}/100[/magenta]\n"
+        f"• Scan Interval: [white]{interval} seconds[/white]\n"
+        f"• Telegram Bot Status: [{bot_color}]{bot_label}[/{bot_color}]",
+        title="🤖 Autonomous Daemon Active",
+        border_style="cyan"
+    ))
+    
+    if not bot.is_configured():
+        console.print("[yellow]⚠️ Warning: Telegram Bot credentials are not set in telegram_config.json.[/yellow]")
+        console.print("[yellow]Signals will be logged to console only until configured.[/yellow]\n")
+        
+    analyst = LocalAIAnalyst()
+    
+    while True:
+        try:
+            now_str = datetime.now(pytz.timezone('Asia/Phnom_Penh')).strftime('%H:%M:%S')
+            console.print(f"[dim]─── [{now_str} UTC+7] Scanning market order flow (1H & 15M) ───[/dim]")
+            
+            for asset in ["BTCUSD", "XAUUSD"]:
+                # -------------------------------------------------------------
+                # 🏛️ UNIFIED TOP-DOWN INSTITUTIONAL PIPELINE
+                # Strategy: 1H Macro Direction Anchor + 15M Sniper Precision Entry
+                # STRICT DISCIPLINE: Exactly ONE authoritative signal per asset!
+                # -------------------------------------------------------------
+                try:
+                    # 1. Macro 1H Structure & Telemetry
+                    raw_1h = fetch_market_data(asset, "1h")
+                    df_1h = calculate_technical_indicators(raw_1h)
+                    ind_1h = analyze_indicator_telemetry(df_1h)
+                    
+                    # Automated Lifecycle Monitor (TP / SL / Break-Even Tracking)
+                    try:
+                        latest_candle = df_1h.iloc[-1].to_dict()
+                        tp_sl_events = monitor_trade_outcomes(asset, "Unified", latest_candle, bot)
+                        for ev in tp_sl_events:
+                            if "TP" in ev["type"]:
+                                console.print(f"[bold green]🎯 {ev['type']} HIT ALERT DISPATCHED FOR {asset} at {ev['hit_price']}![/bold green]")
+                            elif "SL" in ev["type"]:
+                                console.print(f"[bold red]🛑 SL HIT ALERT DISPATCHED FOR {asset} at {ev['hit_price']}![/bold red]")
+                            elif "BE" in ev["type"]:
+                                console.print(f"[bold cyan]🛡️ BREAK-EVEN (BE) HIT ALERT DISPATCHED FOR {asset} at {ev['hit_price']}![/bold cyan]")
+                    except Exception as trk_err:
+                        pass
+                    
+                    sh_1h, sl_1h = find_swings(df_1h, window=3)
+                    fvgs_1h = detect_fvgs(df_1h)
+                    events_1h = detect_market_structure(df_1h, sh_1h, sl_1h)
+                    obs_1h = detect_order_blocks(df_1h)
+                    dr_1h = calculate_dealing_range(sh_1h, sl_1h, ind_1h["close"])
+                    sweeps_1h = detect_liquidity_sweeps(df_1h, sh_1h, sl_1h)
+                    kz_1h = check_ict_killzone()
+                    
+                    smc_1h = {
+                        "swing_highs": sh_1h, "swing_lows": sl_1h, "fvgs": fvgs_1h,
+                        "structure_events": events_1h, "order_blocks": obs_1h,
+                        "dealing_range": dr_1h, "sweeps": sweeps_1h, "killzone": kz_1h
+                    }
+                    
+                    analysis_1h = analyst.analyze(asset, "1h", df_1h, ind_1h, smc_1h)
+                    
+                    htf_context = {
+                        "bias": analysis_1h["bias"],
+                        "dr_zone": dr_1h.get("zone"),
+                        "dr_pct": dr_1h.get("relative_position_pct", 50.0),
+                        "trend_status": ind_1h.get("trend_status"),
+                        "ema200": ind_1h.get("ema200")
+                    }
+                    
+                    # 2. Precision 15M Trigger (Anchored strictly to 1H Macro Context)
+                    raw_15m = fetch_market_data(asset, "15m")
+                    df_15m = calculate_technical_indicators(raw_15m)
+                    ind_15m = analyze_indicator_telemetry(df_15m)
+                    sh_15m, sl_15m = find_swings(df_15m, window=3)
+                    fvgs_15m = detect_fvgs(df_15m)
+                    events_15m = detect_market_structure(df_15m, sh_15m, sl_15m)
+                    obs_15m = detect_order_blocks(df_15m)
+                    dr_15m = calculate_dealing_range(sh_15m, sl_15m, ind_15m["close"])
+                    sweeps_15m = detect_liquidity_sweeps(df_15m, sh_15m, sl_15m)
+                    kz_15m = check_ict_killzone()
+                    
+                    smc_15m = {
+                        "swing_highs": sh_15m, "swing_lows": sl_15m, "fvgs": fvgs_15m,
+                        "structure_events": events_15m, "order_blocks": obs_15m,
+                        "dealing_range": dr_15m, "sweeps": sweeps_15m, "killzone": kz_15m
+                    }
+                    
+                    analysis_master = analyst.analyze(asset, "15m", df_15m, ind_15m, smc_15m, htf_context=htf_context)
+                    score = analysis_master["confluence_score"]
+                    action = analysis_master.get("setup_action", "WAIT / NO TRADE")
+                    key = f"{asset}_master"
+                    
+                    if action in ["BUY / LONG", "SELL / SHORT"] and score >= min_score:
+                        from core.trade_tracker import has_active_trade, get_active_trade
+                        if has_active_trade(asset, "Unified"):
+                            act = get_active_trade(asset, "Unified")
+                            console.print(f"[dim]{asset}: Active position running ({act.get('action')} @ {act.get('entry'):,.2f}). Suppressing duplicate.[/dim]")
+                        elif dispatched_signals.get(key) == action:
+                            console.print(f"[dim]{asset}: Master Signal ({action}) already dispatched. Suppressing duplicate.[/dim]")
+                        else:
+                            console.print(f"[bold green]🏛️ GRADE A+ INSTITUTIONAL MASTER SIGNAL FOR {asset} ({score}/100)![/bold green]")
+                            console.print(f"Action: [bold yellow]{action}[/bold yellow] | Entry: {analysis_master['plan']['entry']} | Tight SL: {analysis_master['plan']['sl']} | Target: {analysis_master['plan']['tp2']}")
+                            
+                            if bot.is_configured():
+                                res = bot.dispatch_master_signal(asset, analysis_master, ind_1h, ind_15m)
+                                if res.get("status") == "SUCCESS":
+                                    console.print(f"[bold green]✅ Single Master Signal dropped into Telegram for {asset}![/bold green]")
+                                    dispatched_signals[key] = action
+                                else:
+                                    console.print(f"[bold yellow]⚠️ Telegram Notice: {res.get('message')}[/bold yellow]")
+                            else:
+                                dispatched_signals[key] = action
+                    else:
+                        conflict = analysis_master.get("conflict_note", "No Trade Setup")
+                        console.print(f"[dim]{asset}: Standby ({score}/100) — {escape(str(conflict))}[/dim]")
+                        
+                except Exception as asset_err:
+                    console.print(f"[red]Error analyzing {asset}: {asset_err}[/red]")
+                    
+            time.sleep(interval)
+            
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Scanner paused by user.[/yellow]")
+            break
+        except Exception as e:
+            console.print(f"[red]Loop error: {e}[/red]")
+            time.sleep(10)
+
+if __name__ == "__main__":
+    run_scanner_loop()
