@@ -109,54 +109,161 @@ class TelegramSignalBot:
         score = analysis["confluence_score"]
         
         now_time = datetime.now(pytz.timezone('Asia/Phnom_Penh')).strftime('%H:%M (UTC+7)')
-        
-        tf_label = "1H Institutional Swing (🛡️ Low Fakeout Risk)" if timeframe == "1h" else ("15M Intraday Scalp" if timeframe == "15m" else f"{timeframe} Trading")
-        
-        if "BUY" in bias or "BULLISH" in bias:
-            header_icon = "💎 <b>GRADE A+ BUY SIGNAL (1H High Conviction)</b>" if timeframe == "1h" else "🟢 <b>INSTITUTIONAL BUY SIGNAL</b>"
-            action_badge = "BUY / LONG"
-        elif "SELL" in bias or "BEARISH" in bias:
-            header_icon = "💎 <b>GRADE A+ SELL SIGNAL (1H High Conviction)</b>" if timeframe == "1h" else "🔴 <b>INSTITUTIONAL SELL SIGNAL</b>"
-            action_badge = "SELL / SHORT"
-        else:
-            header_icon = "⚪ <b>MARKET TELEMETRY ALERT</b>"
-            action_badge = "WATCHLIST / RANGE"
-
         symbol_label = "FXCM:XAUUSD (Gold)" if asset == "XAUUSD" else "BITSTAMP:BTCUSD (Bitcoin)"
 
-        msg = f"""🦅 <b>PHEARA PRO TRADER AI SIGNAL</b>
+        if "BUY" in bias or "BULLISH" in bias:
+            action_badge = "BUY / LONG"
+        elif "SELL" in bias or "BEARISH" in bias:
+            action_badge = "SELL / SHORT"
+        else:
+            action_badge = "WATCHLIST / RANGE"
+
+        is_swing = (timeframe in ["1h", "4h"])
+
+        if is_swing:
+            # 🏛️ INSTITUTIONAL SWING POSITION (1H / 4H)
+            action_color = "🟢 <b>BUY / LONG (SWING)</b>" if "BUY" in action_badge else "🔴 <b>SELL / SHORT (SWING)</b>"
+            msg = f"""🏛️ <b>PHEARA PRO TRADER AI — INSTITUTIONAL SWING SETUP</b>
 ━━━━━━━━━━━━━━━━━━━━
-{header_icon}
+💎 <b>MACRO SWING POSITION (1H TIMEFRAME)</b>
 📊 <b>Asset:</b> <code>{symbol_label}</code>
-⏱ <b>Timeframe:</b> <code>{tf_label}</code>
-🕒 <b>Time:</b> <code>{now_time}</code>
-🏆 <b>Confluence Rating:</b> <b>{score}/100 (Grade A+)</b>
+⏳ <b>Trade Category:</b> 🏛️ <b>Multi-Day Swing Position</b>
+🕒 <b>Alert Time:</b> <code>{now_time}</code>
+🏆 <b>Confluence Rating:</b> <b>{score}/100 (Grade A+ Institutional Setup)</b>
+🛡️ <b>Fakeout Risk:</b> <b>EXTREMELY LOW (High Conviction Macro Anchor)</b>
 ━━━━━━━━━━━━━━━━━━━━
-🎯 <b>TRADE EXECUTION ROADMAP:</b>
-• <b>Action:</b> <b>{action_badge}</b>
-• <b>Optimal Entry:</b> <code>{plan['entry']}</code> (ប៉ះ EMA 20 / EMA 50 Zone)
-• <b>Stop Loss (SL):</b> <code>{plan['sl']}</code> (Structural Invalidation beyond EMA 50)
-• <b>Take Profit 1:</b> <code>{plan['tp1']}</code> (Partial 70% + Move to BE)
-• <b>Take Profit 2:</b> <code>{plan['tp2']}</code> (🎯 EMA 200 Market Destination)
-• <b>Take Profit 3:</b> <code>{plan['tp3']}</code> (Runner Extension)
-• <b>Risk:Reward:</b> <b>{plan['rrr']}</b> (Risk: {plan['risk_pips_points']} pts)
+🎯 <b>MACRO SWING ROADMAP:</b>
+• <b>Action:</b> {action_color}
+• <b>Swing Entry:</b> <code>{plan['entry']}</code> (1H Pullback & Key POI Zone)
+• <b>Structural Stop Loss (SL):</b> <code>{plan['sl']}</code> (Protected beyond 1H Structure: {plan['risk_pips_points']} pts)
+• <b>Take Profit 1:</b> <code>{plan['tp1']}</code> (Bank 50% Profit + Move SL to Break-Even)
+• <b>Take Profit 2:</b> <code>{plan['tp2']}</code> ({plan.get('target_type', '🎯 Major Macro Destination')})
+• <b>Take Profit 3:</b> <code>{plan['tp3']}</code> (Macro Trend Runner)
+• <b>Risk:Reward:</b> <b>{plan['rrr']}</b>
 ━━━━━━━━━━━━━━━━━━━━
-🧠 <b>CONFLUENCE & STRATEGY AUDIT:</b>
-• <b>EMA Setup:</b> EMA 20 (<code>{indicator_regime.get('ema20')}</code>) vs EMA 50 (<code>{indicator_regime.get('ema50')}</code>)
+🧠 <b>1H MACRO CONFLUENCE AUDIT:</b>
+• <b>Dealing Range:</b> {plan.get('dealing_range_zone', 'N/A')} ({plan.get('dealing_range_pct', 0):.1f}%)
+{f"• <b>Institutional POI:</b> <code>{plan.get('poi_label')}</code>" if plan.get('in_poi') else "• <b>Retest Zone:</b> 1H Dynamic EMA 20/50 Zone"}
+• <b>Macro EMA Trend:</b> 20 (<code>{indicator_regime.get('ema20')}</code>) vs 50 (<code>{indicator_regime.get('ema50')}</code>)
 • <b>Market Destination:</b> EMA 200 (<code>{indicator_regime.get('ema200')}</code>)
-• <b>ADX (14):</b> <code>{indicator_regime.get('adx')}</code> ({indicator_regime.get('trend_grade')})
-• <b>DMI:</b> <code>{indicator_regime.get('dmi_leader')}</code>
-• <b>MACD:</b> <code>{indicator_regime.get('macd_status')}</code>
-• <b>RSI (14):</b> <code>{indicator_regime.get('rsi')}</code> ({indicator_regime.get('rsi_status')})
-• <b>EMA Stack:</b> <code>{indicator_regime.get('trend_status')}</code>
+• <b>ADX Trend Strength:</b> <code>{indicator_regime.get('adx')}</code> ({indicator_regime.get('trend_grade')})
+• <b>MACD Momentum:</b> <code>{indicator_regime.get('macd_status')}</code>
 ━━━━━━━━━━━━━━━━━━━━
-💡 <i>Risk Management: Risk maximum 1% to 2% per trade. When price reaches TP1, move SL to Entry (Break-Even).</i>"""
+🏛️ <b>SWING DISCIPLINE:</b>
+<i>• Expected Holding Time: 12 to 72 Hours (Multi-Day).
+• Immune to 15m intraday noise. Give trade room to breathe and let macro trend run!</i>"""
+
+        else:
+            # ⚡ HIGH-VELOCITY INTRADAY SCALP (15M)
+            action_color = "🟢 <b>BUY / LONG (SCALP)</b>" if "BUY" in action_badge else "🔴 <b>SELL / SHORT (SCALP)</b>"
+            msg = f"""⚡ <b>PHEARA PRO TRADER AI — INTRADAY SCALP SIGNAL</b>
+━━━━━━━━━━━━━━━━━━━━
+🎯 <b>FAST EXECUTION SCALPER (15M TIMEFRAME)</b>
+📊 <b>Asset:</b> <code>{symbol_label}</code>
+⏳ <b>Trade Category:</b> ⚡ <b>Intraday Quick Scalp</b>
+🕒 <b>Alert Time:</b> <code>{now_time}</code>
+🏆 <b>Confluence Rating:</b> <b>{score}/100 (Grade A+ Scalp Setup)</b>
+🛡️ <b>Macro Filter:</b> <b>✅ Strictly Aligned with 1H Trend Direction</b>
+━━━━━━━━━━━━━━━━━━━━
+🎯 <b>SNIPER SCALP ROADMAP:</b>
+• <b>Action:</b> {action_color}
+• <b>Sniper Entry:</b> <code>{plan['entry']}</code> (15M Dynamic Pullback)
+• <b>Tight Scalp SL:</b> <code>{plan['sl']}</code> (Tight Invalidation: {plan['risk_pips_points']} pts)
+• <b>Scalp TP1 (1:2.0):</b> <code>{plan['tp1']}</code> (Secure 70% Profit + Instant BE!)
+• <b>Scalp TP2 (1:3.5):</b> <code>{plan['tp2']}</code> ({plan.get('target_type', '🎯 Intraday Target')})
+• <b>Scalp TP3 (1:5.0):</b> <code>{plan['tp3']}</code> (Session Runner)
+• <b>Risk:Reward:</b> <b>{plan['rrr']}</b>
+━━━━━━━━━━━━━━━━━━━━
+🧠 <b>15M SCALP CONFLUENCE AUDIT:</b>
+• <b>Dealing Range:</b> {plan.get('dealing_range_zone', 'N/A')} ({plan.get('dealing_range_pct', 0):.1f}%)
+{f"• <b>15M POI Reaction:</b> <code>{plan.get('poi_label')}</code>" if plan.get('in_poi') else "• <b>Retest Zone:</b> 15M Dynamic EMA 20/50 Pullback"}
+• <b>Fast EMAs:</b> 20 (<code>{indicator_regime.get('ema20')}</code>) vs 50 (<code>{indicator_regime.get('ema50')}</code>)
+• <b>ADX Velocity:</b> <code>{indicator_regime.get('adx')}</code> ({indicator_regime.get('trend_grade')})
+• <b>RSI Value Zone:</b> <code>{indicator_regime.get('rsi')}</code> ({indicator_regime.get('rsi_status')})
+━━━━━━━━━━━━━━━━━━━━
+⚡ <b>SCALP DISCIPLINE:</b>
+<i>• Expected Holding Time: 15 Mins to 2 Hours Max.
+• When TP1 is achieved, immediately lock Break-Even. Close before daily session ends!</i>"""
 
         send_res = self.send_message(msg)
         if send_res.get("status") == "SUCCESS":
             try:
                 from core.trade_tracker import register_trade
                 register_trade(asset, timeframe, plan, action_badge)
+            except Exception as trk_err:
+                print(f"[Notice] Trade tracking register error: {trk_err}")
+                
+        return send_res
+
+    def dispatch_master_signal(self, asset: str, analysis: dict, ind_1h: dict, ind_15m: dict, force: bool = False) -> dict:
+        """
+        Dispatches the single authoritative Institutional Master Signal combining
+        1H Macro Direction + 15M Sniper Precision Entry.
+        STRICT DISCIPLINE: Only ONE unified trade per asset. No mixed timeframe spam!
+        """
+        action = analysis.get("setup_action", "WAIT / NO TRADE")
+        if action not in ["BUY / LONG", "SELL / SHORT"]:
+            conflict = analysis.get("conflict_note", "Multi-oscillators not aligned")
+            return {
+                "status": "BLOCKED",
+                "message": f"សូចនាករមិនទាន់ស្របគ្នា ({conflict})។"
+            }
+
+        if not force:
+            try:
+                from core.trade_tracker import has_active_trade, get_active_trade
+                if has_active_trade(asset, "Unified"):
+                    act = get_active_trade(asset, "Unified")
+                    return {
+                        "status": "ALREADY_RUNNING",
+                        "message": f"សញ្ញា Master {asset} ({act.get('action')}) កំពុងដំណើរការរួចហើយ (Running @ {act.get('entry'):,.2f})។ ប្រព័ន្ធទប់ស្កាត់ការផ្ញើសារស្ទួនដដែលៗ!"
+                    }
+            except Exception:
+                pass
+
+        plan = analysis["plan"]
+        bias = analysis["bias"]
+        score = analysis["confluence_score"]
+        now_time = datetime.now(pytz.timezone('Asia/Phnom_Penh')).strftime('%H:%M (UTC+7)')
+        symbol_label = "FXCM:XAUUSD (Spot Gold)" if asset == "XAUUSD" else "BITSTAMP:BTCUSD (Spot Bitcoin)"
+        action_color = "🟢 <b>BUY / LONG (INSTITUTIONAL)</b>" if "BUY" in action else "🔴 <b>SELL / SHORT (INSTITUTIONAL)</b>"
+
+        msg = f"""🏛️ <b>PHEARA PRO TRADER AI — INSTITUTIONAL MASTER SIGNAL</b>
+━━━━━━━━━━━━━━━━━━━━
+💎 <b>TOP-DOWN INSTITUTIONAL EXECUTION (1H MACRO + 15M SNIPER)</b>
+📊 <b>Asset:</b> <code>{symbol_label}</code>
+⏱ <b>Framework:</b> <b>1H Macro Trend Anchor + 15M Sniper Execution</b>
+🕒 <b>Alert Time:</b> <code>{now_time}</code>
+🏆 <b>Confluence Score:</b> <b>{score}/100 (Grade A+ Institutional Setup)</b>
+🛡️ <b>Signal Integrity:</b> <b>100% UNIFIED (Zero Mixed Confusion)</b>
+━━━━━━━━━━━━━━━━━━━━
+🎯 <b>MASTER EXECUTION ROADMAP:</b>
+• <b>Action:</b> {action_color}
+• <b>Sniper Entry:</b> <code>{plan['entry']}</code> (Exact live market retest)
+• <b>Tight Structural SL:</b> <code>{plan['sl']}</code> (Protected: {plan['risk_pips_points']} pts)
+• <b>Take Profit 1 (1:2.0):</b> <code>{plan['tp1']}</code> (Bank 70% Profit + Move SL to Break-Even)
+• <b>Take Profit 2 (1:3.5):</b> <code>{plan['tp2']}</code> ({plan.get('target_type', '🎯 EMA 200 / Main Destination')})
+• <b>Take Profit 3 (1:5.0):</b> <code>{plan['tp3']}</code> (Macro Runner Extension)
+• <b>Risk:Reward Ratio:</b> <b>{plan['rrr']}</b>
+━━━━━━━━━━━━━━━━━━━━
+🧠 <b>TOP-DOWN CONFLUENCE AUDIT:</b>
+• <b>1H Macro Anchor:</b> <code>{ind_1h.get('summary_km', 'Macro Trend Confirmed')}</code>
+• <b>Dealing Range:</b> {plan.get('dealing_range_zone', 'N/A')} ({plan.get('dealing_range_pct', 0):.1f}%) — Institutional Value
+{f"• <b>Active POI:</b> <code>{plan.get('poi_label')}</code>" if plan.get('in_poi') else "• <b>Dynamic Support:</b> EMA 20/50 Institutional Band"}
+• <b>Macro Destination:</b> EMA 200 (<code>{ind_1h.get('ema200')}</code>)
+• <b>Trend Strength (ADX):</b> <code>{ind_1h.get('adx')}</code> ({ind_1h.get('trend_grade')})
+• <b>Momentum (MACD):</b> <code>{ind_15m.get('macd_status')}</code>
+━━━━━━━━━━━━━━━━━━━━
+🏛️ <b>INSTITUTIONAL TRADE RULES:</b>
+<i>1. Single Active Position: Never open multiple trades on the same asset.
+2. Risk Management: Max 1% to 2% account equity.
+3. Once TP1 is achieved, immediately lock Break-Even to guarantee 100% Risk-Free trading!</i>"""
+
+        send_res = self.send_message(msg)
+        if send_res.get("status") == "SUCCESS":
+            try:
+                from core.trade_tracker import register_trade
+                register_trade(asset, "Unified", plan, action)
             except Exception as trk_err:
                 print(f"[Notice] Trade tracking register error: {trk_err}")
                 

@@ -160,8 +160,8 @@ def analyze_indicator_telemetry(df: pd.DataFrame) -> dict:
     ema20_below_ema50 = (ema20 < ema50)
     
     # Check if price touches or tests EMA 20 or EMA 50 (Within dynamic touch tolerance)
-    recent_bars = df.tail(min(3, len(df)))
-    tol = 0.0020  # 0.20% buffer for touch/retest detection
+    recent_bars = df.tail(min(5, len(df)))
+    tol = 0.0035  # 0.35% buffer for touch/retest detection (covers candle wicks and retest bounces)
     touches_ema20 = False
     touches_ema50 = False
     
