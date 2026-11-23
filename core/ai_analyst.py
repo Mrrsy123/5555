@@ -67,9 +67,21 @@ class LocalAIAnalyst:
             
         if rsi <= 30.0:
             conflicts.append(f"RSI={rsi:.1f} Oversold ជ្រៅពេក (ប្រឈមនឹងការងើបឡើងវិញ - ហាម SELL)")
+
+        # 3. EMA 20 / EMA 50 Cross & Retest Dynamic Entry Check
+        ema20_above_ema50 = ema_regime.get("ema20_above_ema50", (ema_regime.get("ema20", 0) > ema_regime.get("ema50", 0)))
+        ema20_below_ema50 = ema_regime.get("ema20_below_ema50", (ema_regime.get("ema20", 0) < ema_regime.get("ema50", 0)))
+        touches_ema_entry = ema_regime.get("touches_ema_entry_zone", False)
+        ema_touch_label = ema_regime.get("ema_touch_label", "")
+
+        # Check E: Price must touch EMA 20 or EMA 50 for Entry trigger!
+        if ema20_above_ema50 and not touches_ema_entry:
+            conflicts.append("រង់ចាំតម្លៃទាញថយក្រោយមកប៉ះ EMA 20 ឬ EMA 50 ដើម្បីចូល Entry (Awaiting EMA Retest)")
+        if ema20_below_ema50 and not touches_ema_entry:
+            conflicts.append("រង់ចាំតម្លៃងើបឡើងមកប៉ះ EMA 20 ឬ EMA 50 ដើម្បីចូល Entry (Awaiting EMA Retest)")
             
-        # 3. Check for TRUE Full Bullish Alignment (ALL Pillars must agree)
-        bullish_ema_aligned = (price_vs_ema50 == "ABOVE" and (price_vs_ema200 == "ABOVE" or is_bullish_stack))
+        # 4. Check for TRUE Full Bullish Alignment (EMA 20 > EMA 50 + Touches EMA 20/50 + Momentum)
+        bullish_ema_aligned = (ema20_above_ema50 and touches_ema_entry and (current_price >= ema_regime.get("ema50", 0) * 0.998))
         bullish_adx_aligned = (adx >= 20.0 and plus_di > minus_di)
         bullish_macd_aligned = (macd > macd_signal and (macd_hist > 0 or macd_bull_cross))
         bullish_rsi_aligned = (38.0 <= rsi <= 68.0)
@@ -79,11 +91,11 @@ class LocalAIAnalyst:
             bullish_adx_aligned and
             bullish_macd_aligned and
             bullish_rsi_aligned and
-            not any("Bearish" in c or "Overbought" in c for c in conflicts)
+            not any("Bearish" in c or "Overbought" in c for c in conflicts if "Awaiting EMA" not in c)
         )
         
-        # 4. Check for TRUE Full Bearish Alignment (ALL Pillars must agree)
-        bearish_ema_aligned = (price_vs_ema50 == "BELOW" and (price_vs_ema200 == "BELOW" or is_bearish_stack))
+        # 5. Check for TRUE Full Bearish Alignment (EMA 20 < EMA 50 + Touches EMA 20/50 + Momentum)
+        bearish_ema_aligned = (ema20_below_ema50 and touches_ema_entry and (current_price <= ema_regime.get("ema50", 0) * 1.002))
         bearish_adx_aligned = (adx >= 20.0 and minus_di > plus_di)
         bearish_macd_aligned = (macd < macd_signal and (macd_hist < 0 or macd_bear_cross))
         bearish_rsi_aligned = (32.0 <= rsi <= 62.0)
@@ -93,7 +105,7 @@ class LocalAIAnalyst:
             bearish_adx_aligned and
             bearish_macd_aligned and
             bearish_rsi_aligned and
-            not any("Bullish" in c or "Oversold" in c for c in conflicts)
+            not any("Bullish" in c or "Oversold" in c for c in conflicts if "Awaiting EMA" not in c)
         )
         
         bullish_reasons = []
@@ -102,24 +114,26 @@ class LocalAIAnalyst:
         # Final Confluence Decision
         if is_true_bullish:
             bias = "STRONG_BULLISH"
-            bias_km = "🟢 សូចនាករស្របគ្នាពេញលេញ (BULLISH CONFLUENCE)"
+            bias_km = "🟢 សញ្ញា BUY: EMA 20 > EMA 50 (តម្លៃប៉ះ EMA 20/50 ➔ ទិសដៅ EMA 200)"
             setup_action = "BUY / LONG"
-            confluence_score = min(98, max(80, int(75 + (adx * 0.4))))
-            conflict_note = "All Oscillators Fully Aligned Bullish"
-            bullish_reasons.append("EMA Alignment: Bullish Stack (Price > EMA 50 & 200)")
+            confluence_score = min(98, max(80, int(78 + (adx * 0.4))))
+            conflict_note = "EMA 20 > EMA 50 + តម្លៃប៉ះ EMA 20/50 បង្កើតចំណុច Entry ឆ្ពោះទៅ EMA 200"
+            bullish_reasons.append("Strategy Trigger: EMA 20 កាត់ឡើងលើ EMA 50 (Bullish Cross)")
+            bullish_reasons.append(f"Entry Confirmation: តម្លៃបានទាញថយក្រោយមកប៉ះ EMA 20/50 ({ema_touch_label})")
+            bullish_reasons.append(f"Destination Target: EMA 200 (${ema_regime['ema200']:,.2f}) ជាទិសដៅផ្សារ")
             bullish_reasons.append(f"ADX={adx:.1f} ({trend_grade}) + +DI > -DI (Trending Buy)")
             bullish_reasons.append("MACD Bullish Momentum (MACD > Signal Line)")
-            bullish_reasons.append(f"RSI={rsi:.1f} (Healthy Expansion Zone)")
         elif is_true_bearish:
             bias = "STRONG_BEARISH"
-            bias_km = "🔴 សូចនាករស្របគ្នាពេញលេញ (BEARISH CONFLUENCE)"
+            bias_km = "🔴 សញ្ញា SELL: EMA 20 < EMA 50 (តម្លៃប៉ះ EMA 20/50 ➔ ទិសដៅ EMA 200)"
             setup_action = "SELL / SHORT"
-            confluence_score = min(98, max(80, int(75 + (adx * 0.4))))
-            conflict_note = "All Oscillators Fully Aligned Bearish"
-            bearish_reasons.append("EMA Alignment: Bearish Stack (Price < EMA 50 & 200)")
+            confluence_score = min(98, max(80, int(78 + (adx * 0.4))))
+            conflict_note = "EMA 20 < EMA 50 + តម្លៃប៉ះ EMA 20/50 បង្កើតចំណុច Entry ឆ្ពោះទៅ EMA 200"
+            bearish_reasons.append("Strategy Trigger: EMA 20 កាត់ចុះក្រោម EMA 50 (Bearish Cross)")
+            bearish_reasons.append(f"Entry Confirmation: តម្លៃបានងើបឡើងមកប៉ះ EMA 20/50 ({ema_touch_label})")
+            bearish_reasons.append(f"Destination Target: EMA 200 (${ema_regime['ema200']:,.2f}) ជាទិសដៅផ្សារ")
             bearish_reasons.append(f"ADX={adx:.1f} ({trend_grade}) + -DI > +DI (Trending Sell)")
             bearish_reasons.append("MACD Bearish Momentum (MACD < Signal Line)")
-            bearish_reasons.append(f"RSI={rsi:.1f} (Healthy Expansion Zone)")
         else:
             bias = "NEUTRAL"
             bias_km = "⚪ រង់ចាំសូចនាករស្របគ្នា (Awaiting Confluence)"
@@ -154,39 +168,56 @@ class LocalAIAnalyst:
 
     def _calculate_real_execution_plan(self, symbol: str, timeframe: str, action: str, current_price: float, df, atr: float, ema_regime: dict) -> dict:
         """
-        Calculates actionable Entry, Stop Loss, and Take Profit anchored directly to LIVE MARKET PRICE.
-        Entry is GUARANTEED to be the exact current live market price from TradingView.
-        Tight scalping risk parameters for 15m; realistic swing parameters for 4h.
+        Calculates actionable Entry, Stop Loss, and Take Profit.
+        Strategy Rule:
+        - Entry: Dynamic Pullback touching EMA 20 or EMA 50.
+        - Target (TP): EMA 200 is the primary market destination (ទិសដៅផ្សារ)!
+        - Stop Loss: Invalidation beyond EMA 50.
         """
         is_scalping = (timeframe == "15m")
         recent = df.tail(4) if is_scalping else df.tail(10)
         recent_high = float(recent['High'].max())
         recent_low = float(recent['Low'].min())
         
+        ema200 = float(ema_regime.get("ema200", current_price))
+        ema50 = float(ema_regime.get("ema50", current_price))
+        ema20 = float(ema_regime.get("ema20", current_price))
+        
         # Entry is ALWAYS strictly the exact real-time live market price from TradingView
         entry = round(current_price, 2)
         
         if "SELL" in action or "BEARISH" in action:
             if symbol == "XAUUSD":
-                if is_scalping:
-                    sl = round(max(recent_high + 1.0, current_price + 3.5), 2)
-                else:
-                    sl = round(max(recent_high + 3.0, current_price + 12.0), 2)
+                sl_buf = 1.0 if is_scalping else 3.0
+                min_risk = 3.5 if is_scalping else 12.0
+                sl = round(max(recent_high + sl_buf, ema50 + sl_buf, current_price + min_risk), 2)
             else:
-                if is_scalping:
-                    sl = round(max(recent_high + 80.0, current_price + 250.0), 2)
-                else:
-                    sl = round(max(recent_high + 300.0, current_price + 1200.0), 2)
+                sl_buf = 80.0 if is_scalping else 300.0
+                min_risk = 250.0 if is_scalping else 1200.0
+                sl = round(max(recent_high + sl_buf, ema50 + sl_buf, current_price + min_risk), 2)
             
             risk = round(sl - entry, 2)
             if risk <= 0:
                 risk = 3.5 if symbol == "XAUUSD" else 250.0
                 sl = round(entry + risk, 2)
                 
-            tp1 = round(entry - (risk * 1.5), 2)
-            tp2 = round(entry - (risk * 2.5), 2)
-            tp3 = round(entry - (risk * 4.0), 2)
-            rrr = round(abs(entry - tp2) / risk, 2)
+            # EMA 200 is the market target (ទិសដៅផ្សារ)!
+            if entry > ema200:
+                dist_to_ema200 = entry - ema200
+                if dist_to_ema200 >= risk:
+                    tp1 = round(entry - (dist_to_ema200 * 0.5), 2)
+                    tp2 = round(ema200, 2)  # Exact EMA 200 Destination!
+                    tp3 = round(ema200 - (dist_to_ema200 * 0.5), 2)
+                else:
+                    tp1 = round(entry - (risk * 1.5), 2)
+                    tp2 = round(ema200, 2)
+                    tp3 = round(entry - (risk * 3.5), 2)
+            else:
+                tp1 = round(entry - (risk * 1.5), 2)
+                tp2 = round(entry - (risk * 2.5), 2)
+                tp3 = round(entry - (risk * 4.0), 2)
+
+            rrr = round(abs(entry - tp2) / risk, 2) if risk > 0 else 2.5
             return {
                 "current_live_price": entry,
                 "entry": entry,
@@ -195,30 +226,42 @@ class LocalAIAnalyst:
                 "tp2": tp2,
                 "tp3": tp3,
                 "risk_pips_points": risk,
-                "rrr": f"1:{rrr}"
+                "rrr": f"1:{rrr}",
+                "target_type": "EMA 200 Destination" if entry > ema200 else "Standard Trend Run"
             }
             
         elif "BUY" in action or "BULLISH" in action:
             if symbol == "XAUUSD":
-                if is_scalping:
-                    sl = round(min(recent_low - 1.0, current_price - 3.5), 2)
-                else:
-                    sl = round(min(recent_low - 3.0, current_price - 12.0), 2)
+                sl_buf = 1.0 if is_scalping else 3.0
+                min_risk = 3.5 if is_scalping else 12.0
+                sl = round(min(recent_low - sl_buf, ema50 - sl_buf, current_price - min_risk), 2)
             else:
-                if is_scalping:
-                    sl = round(min(recent_low - 80.0, current_price - 250.0), 2)
-                else:
-                    sl = round(min(recent_low - 300.0, current_price - 1200.0), 2)
+                sl_buf = 80.0 if is_scalping else 300.0
+                min_risk = 250.0 if is_scalping else 1200.0
+                sl = round(min(recent_low - sl_buf, ema50 - sl_buf, current_price - min_risk), 2)
             
             risk = round(entry - sl, 2)
             if risk <= 0:
                 risk = 3.5 if symbol == "XAUUSD" else 250.0
                 sl = round(entry - risk, 2)
                 
-            tp1 = round(entry + (risk * 1.5), 2)
-            tp2 = round(entry + (risk * 2.5), 2)
-            tp3 = round(entry + (risk * 4.0), 2)
-            rrr = round(abs(tp2 - entry) / risk, 2)
+            # EMA 200 is the market target (ទិសដៅផ្សារ)!
+            if entry < ema200:
+                dist_to_ema200 = ema200 - entry
+                if dist_to_ema200 >= risk:
+                    tp1 = round(entry + (dist_to_ema200 * 0.5), 2)
+                    tp2 = round(ema200, 2)  # Exact EMA 200 Destination!
+                    tp3 = round(ema200 + (dist_to_ema200 * 0.5), 2)
+                else:
+                    tp1 = round(entry + (risk * 1.5), 2)
+                    tp2 = round(ema200, 2)
+                    tp3 = round(entry + (risk * 3.5), 2)
+            else:
+                tp1 = round(entry + (risk * 1.5), 2)
+                tp2 = round(entry + (risk * 2.5), 2)
+                tp3 = round(entry + (risk * 4.0), 2)
+
+            rrr = round(abs(tp2 - entry) / risk, 2) if risk > 0 else 2.5
             return {
                 "current_live_price": entry,
                 "entry": entry,
@@ -227,7 +270,8 @@ class LocalAIAnalyst:
                 "tp2": tp2,
                 "tp3": tp3,
                 "risk_pips_points": risk,
-                "rrr": f"1:{rrr}"
+                "rrr": f"1:{rrr}",
+                "target_type": "EMA 200 Destination" if entry < ema200 else "Standard Trend Run"
             }
             
         else:

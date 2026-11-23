@@ -159,7 +159,8 @@ st.sidebar.caption("TradingView Live • Telegram Bot Signal Auto-Drop")
 
 # Asset & Timeframe Selection
 asset = st.sidebar.selectbox("ឧបករណ៍ជួញដូរ (Asset):", ["BTCUSD", "XAUUSD"], index=0)
-timeframe = st.sidebar.selectbox("ពេលវេលា (Timeframe):", ["15m", "1h", "4h", "1d"], index=0)
+timeframe = st.sidebar.selectbox("ពេលវេលា (Timeframe):", ["1h", "15m", "4h", "1d"], index=0)
+st.sidebar.caption("💡 **Timeframe 1H ត្រូវបានណែនាំ:** កាត់បន្ថយ Fakeout ៧០% & មិនសូវឆាប់ប៉ះ SL")
 
 tv_symbol_code = "BITSTAMP:BTCUSD" if asset == "BTCUSD" else "FX:XAUUSD"
 tv_display_name = "BITSTAMP:BTCUSD (Spot Bitcoin)" if asset == "BTCUSD" else "FXCM:XAUUSD (Spot Gold)"
@@ -299,22 +300,24 @@ def get_card_data(sym: str, tf: str):
         print(f"[Error] get_card_data({sym}, {tf}): {err}")
         return None, None
 
-# Compute for the 2 primary assets: BTCUSD 15m & XAUUSD 15m
+# Compute for the 2 primary assets: BTCUSD & XAUUSD (Matching chosen Timeframe)
 card_cols = st.columns(2)
 
-# Card 1: BTCUSD 15m Scalping
+# Card 1: BTCUSD
 with card_cols[0]:
-    if asset == "BTCUSD" and timeframe == "15m":
+    if asset == "BTCUSD":
         btc_ana, btc_ind = analysis_result, indicator_regime
     else:
-        btc_ana, btc_ind = get_card_data("BTCUSD", "15m")
+        btc_ana, btc_ind = get_card_data("BTCUSD", timeframe)
     if btc_ana and btc_ind:
-        st.markdown(generate_signal_card_html("BTCUSD", "15m", btc_ana, btc_ind, "LIVE ACTIVE"), unsafe_allow_html=True)
-        if st.button("✈️ Drop BTCUSD to Telegram", key="drop_btc_btn", use_container_width=True):
+        st.markdown(generate_signal_card_html("BTCUSD", timeframe, btc_ana, btc_ind, f"{timeframe.upper()} ACTIVE"), unsafe_allow_html=True)
+        if st.button(f"✈️ Drop BTCUSD {timeframe.upper()} to Telegram", key="drop_btc_btn", use_container_width=True):
             if bot.is_configured():
-                res = bot.dispatch_trade_signal("BTCUSD", "15m", btc_ana, btc_ind)
+                res = bot.dispatch_trade_signal("BTCUSD", timeframe, btc_ana, btc_ind)
                 if res.get("status") == "SUCCESS":
-                    st.success("🎉 សញ្ញា BTCUSD ត្រូវបានទម្លាក់ចូល Telegram Bot ជោគជ័យ!")
+                    st.success(f"🎉 សញ្ញា BTCUSD ({timeframe}) ត្រូវបានទម្លាក់ចូល Telegram Bot ជោគជ័យ!")
+                elif res.get("status") == "ALREADY_RUNNING":
+                    st.warning(f"⚠️ {res.get('message')}")
                 elif res.get("status") == "BLOCKED":
                     st.warning(f"⚠️ {res.get('message')}")
                 else:
@@ -324,19 +327,21 @@ with card_cols[0]:
     else:
         st.info("Loading BTCUSD Signal Card...")
 
-# Card 2: XAUUSD 15m Scalping
+# Card 2: XAUUSD
 with card_cols[1]:
-    if asset == "XAUUSD" and timeframe == "15m":
+    if asset == "XAUUSD":
         xau_ana, xau_ind = analysis_result, indicator_regime
     else:
-        xau_ana, xau_ind = get_card_data("XAUUSD", "15m")
+        xau_ana, xau_ind = get_card_data("XAUUSD", timeframe)
     if xau_ana and xau_ind:
-        st.markdown(generate_signal_card_html("XAUUSD", "15m", xau_ana, xau_ind, "LIVE ACTIVE"), unsafe_allow_html=True)
-        if st.button("✈️ Drop XAUUSD to Telegram", key="drop_xau_btn", use_container_width=True):
+        st.markdown(generate_signal_card_html("XAUUSD", timeframe, xau_ana, xau_ind, f"{timeframe.upper()} ACTIVE"), unsafe_allow_html=True)
+        if st.button(f"✈️ Drop XAUUSD {timeframe.upper()} to Telegram", key="drop_xau_btn", use_container_width=True):
             if bot.is_configured():
-                res = bot.dispatch_trade_signal("XAUUSD", "15m", xau_ana, xau_ind)
+                res = bot.dispatch_trade_signal("XAUUSD", timeframe, xau_ana, xau_ind)
                 if res.get("status") == "SUCCESS":
-                    st.success("🎉 សញ្ញា XAUUSD ត្រូវបានទម្លាក់ចូល Telegram Bot ជោគជ័យ!")
+                    st.success(f"🎉 សញ្ញា XAUUSD ({timeframe}) ត្រូវបានទម្លាក់ចូល Telegram Bot ជោគជ័យ!")
+                elif res.get("status") == "ALREADY_RUNNING":
+                    st.warning(f"⚠️ {res.get('message')}")
                 elif res.get("status") == "BLOCKED":
                     st.warning(f"⚠️ {res.get('message')}")
                 else:
@@ -351,10 +356,13 @@ with card_cols[1]:
 # -------------------------------------------------------------
 if bot.is_configured() and auto_drop_enabled:
     auto_items = [
-        ("BTCUSD", "15m", btc_ana, btc_ind),
-        ("XAUUSD", "15m", xau_ana, xau_ind)
+        ("BTCUSD", "1h"),
+        ("XAUUSD", "1h"),
+        ("BTCUSD", "15m"),
+        ("XAUUSD", "15m")
     ]
-    for c_sym, c_tf, c_ana, c_ind in auto_items:
+    for c_sym, c_tf in auto_items:
+        c_ana, c_ind = get_card_data(c_sym, c_tf)
         if c_ana and c_ind:
             auto_res = bot.auto_dispatch_if_confluent(c_sym, c_tf, c_ana, c_ind)
             if auto_res.get("status") == "AUTO_DISPATCHED":

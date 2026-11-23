@@ -50,6 +50,27 @@ def clear_all_trades() -> int:
     save_trades([])
     return total
 
+def has_active_trade(asset: str, timeframe: str = "15m") -> bool:
+    """
+    Returns True if an open position is currently running for this asset & timeframe.
+    Used for strict single-signal anti-duplicate enforcement.
+    """
+    trades = load_trades()
+    for t in trades:
+        if t.get("asset") == asset and t.get("timeframe") == timeframe and t.get("status") == "OPEN":
+            return True
+    return False
+
+def get_active_trade(asset: str, timeframe: str = "15m") -> dict:
+    """
+    Returns the active running trade object for this asset & timeframe, or None.
+    """
+    trades = load_trades()
+    for t in trades:
+        if t.get("asset") == asset and t.get("timeframe") == timeframe and t.get("status") == "OPEN":
+            return t
+    return None
+
 def register_trade(asset: str, timeframe: str, plan: dict, action: str) -> dict:
     """
     Registers a new dispatched trade into active monitoring database.

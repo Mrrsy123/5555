@@ -75,10 +75,13 @@ class TelegramSignalBot:
 ប្រព័ន្ធត្រៀមខ្លួនរួចរាល់ក្នុងការបញ្ជូនសញ្ញា <b>Auto Scalp 15M</b> ចូលមកកាន់ទីនេះហើយបាទ!"""
         return self.send_message(test_msg)
 
-    def dispatch_trade_signal(self, asset: str, timeframe: str, analysis: dict, indicator_regime: dict) -> dict:
+    def dispatch_trade_signal(self, asset: str, timeframe: str, analysis: dict, indicator_regime: dict, force: bool = False) -> dict:
         """
         Format and dispatch an institutional-grade signal to Telegram.
-        STRICT DISCIPLINE: Signals are ONLY dispatched when Multi-Oscillators are 100% confluent.
+        STRICT DISCIPLINE & ANTI-SPAM:
+        - Signals are ONLY dispatched when Multi-Oscillators are 100% confluent.
+        - Signals are sent ONLY ONCE per trade setup! If an active trade is already running,
+          duplicate dispatch is strictly blocked unless force=True.
         """
         action = analysis.get("setup_action", "WAIT / NO TRADE")
         if action not in ["BUY / LONG", "SELL / SHORT"]:
@@ -88,17 +91,32 @@ class TelegramSignalBot:
                 "message": f"សូចនាករមិនទាន់ស្របគ្នា ({conflict})។ ប្រព័ន្ធផ្អាកការបញ្ជូន Signal ដើម្បីការពារហានិភ័យ!"
             }
 
+        # Anti-Duplicate Guard: Check if an active trade is already open
+        if not force:
+            try:
+                from core.trade_tracker import has_active_trade, get_active_trade
+                if has_active_trade(asset, timeframe):
+                    act = get_active_trade(asset, timeframe)
+                    return {
+                        "status": "ALREADY_RUNNING",
+                        "message": f"សញ្ញា {asset} ({act.get('action')}) កំពុងដំណើរការរួចហើយ (Running @ {act.get('entry'):,.2f})។ ប្រព័ន្ធទប់ស្កាត់ការផ្ញើសារស្ទួនដដែលៗ!"
+                    }
+            except Exception:
+                pass
+
         plan = analysis["plan"]
         bias = analysis["bias"]
         score = analysis["confluence_score"]
         
         now_time = datetime.now(pytz.timezone('Asia/Phnom_Penh')).strftime('%H:%M (UTC+7)')
         
+        tf_label = "1H Institutional Swing (🛡️ Low Fakeout Risk)" if timeframe == "1h" else ("15M Intraday Scalp" if timeframe == "15m" else f"{timeframe} Trading")
+        
         if "BUY" in bias or "BULLISH" in bias:
-            header_icon = "🟢 <b>INSTITUTIONAL BUY SIGNAL</b>"
+            header_icon = "💎 <b>GRADE A+ BUY SIGNAL (1H High Conviction)</b>" if timeframe == "1h" else "🟢 <b>INSTITUTIONAL BUY SIGNAL</b>"
             action_badge = "BUY / LONG"
         elif "SELL" in bias or "BEARISH" in bias:
-            header_icon = "🔴 <b>INSTITUTIONAL SELL SIGNAL</b>"
+            header_icon = "💎 <b>GRADE A+ SELL SIGNAL (1H High Conviction)</b>" if timeframe == "1h" else "🔴 <b>INSTITUTIONAL SELL SIGNAL</b>"
             action_badge = "SELL / SHORT"
         else:
             header_icon = "⚪ <b>MARKET TELEMETRY ALERT</b>"
@@ -110,20 +128,22 @@ class TelegramSignalBot:
 ━━━━━━━━━━━━━━━━━━━━
 {header_icon}
 📊 <b>Asset:</b> <code>{symbol_label}</code>
-⏱ <b>Timeframe:</b> <code>{timeframe} Scalping</code>
+⏱ <b>Timeframe:</b> <code>{tf_label}</code>
 🕒 <b>Time:</b> <code>{now_time}</code>
 🏆 <b>Confluence Rating:</b> <b>{score}/100 (Grade A+)</b>
 ━━━━━━━━━━━━━━━━━━━━
 🎯 <b>TRADE EXECUTION ROADMAP:</b>
 • <b>Action:</b> <b>{action_badge}</b>
-• <b>Optimal Entry:</b> <code>{plan['entry']}</code>
-• <b>Stop Loss (SL):</b> <code>{plan['sl']}</code> (Structural Invalidation)
+• <b>Optimal Entry:</b> <code>{plan['entry']}</code> (ប៉ះ EMA 20 / EMA 50 Zone)
+• <b>Stop Loss (SL):</b> <code>{plan['sl']}</code> (Structural Invalidation beyond EMA 50)
 • <b>Take Profit 1:</b> <code>{plan['tp1']}</code> (Partial 70% + Move to BE)
-• <b>Take Profit 2:</b> <code>{plan['tp2']}</code> (Main Target)
-• <b>Take Profit 3:</b> <code>{plan['tp3']}</code> (Runner)
+• <b>Take Profit 2:</b> <code>{plan['tp2']}</code> (🎯 EMA 200 Market Destination)
+• <b>Take Profit 3:</b> <code>{plan['tp3']}</code> (Runner Extension)
 • <b>Risk:Reward:</b> <b>{plan['rrr']}</b> (Risk: {plan['risk_pips_points']} pts)
 ━━━━━━━━━━━━━━━━━━━━
-🧠 <b>CONFLUENCE AUDIT:</b>
+🧠 <b>CONFLUENCE & STRATEGY AUDIT:</b>
+• <b>EMA Setup:</b> EMA 20 (<code>{indicator_regime.get('ema20')}</code>) vs EMA 50 (<code>{indicator_regime.get('ema50')}</code>)
+• <b>Market Destination:</b> EMA 200 (<code>{indicator_regime.get('ema200')}</code>)
 • <b>ADX (14):</b> <code>{indicator_regime.get('adx')}</code> ({indicator_regime.get('trend_grade')})
 • <b>DMI:</b> <code>{indicator_regime.get('dmi_leader')}</code>
 • <b>MACD:</b> <code>{indicator_regime.get('macd_status')}</code>
@@ -256,6 +276,9 @@ class TelegramSignalBot:
             }
         }
         sim_regime = {
+            "ema20": 3612.89 if asset == "XAUUSD" else 61330.00,
+            "ema50": 3596.55 if asset == "XAUUSD" else 61136.00,
+            "ema200": 3571.87 if asset == "XAUUSD" else 60484.00,
             "adx": 34.5,
             "trend_grade": "Strong Trend Active",
             "dmi_leader": "+DI Dominant (Bullish)" if "BUY" in action else "-DI Dominant (Bearish)",
@@ -264,7 +287,7 @@ class TelegramSignalBot:
             "rsi_status": "Optimal Pullback Zone",
             "trend_status": "Aligned Bullish Stack" if "BUY" in action else "Aligned Bearish Stack"
         }
-        return self.dispatch_trade_signal(asset, timeframe, sim_analysis, sim_regime)
+        return self.dispatch_trade_signal(asset, timeframe, sim_analysis, sim_regime, force=True)
 
     def simulate_tp_hit(self, asset: str = "XAUUSD", timeframe: str = "15m", tp_level: int = 1) -> dict:
         """
@@ -302,8 +325,10 @@ class TelegramSignalBot:
 
     def auto_dispatch_if_confluent(self, asset: str, timeframe: str, analysis: dict, indicator_regime: dict, candle_time: str = None) -> dict:
         """
-        Automatically drops signal into Telegram if it meets 100% strict confluence
-        and has not been previously dispatched for this candle.
+        STRICT SINGLE DISPATCH RULE:
+        - Automatically drops signal into Telegram if it meets 100% strict confluence.
+        - Guarantees signal is sent ONLY ONCE per trade setup!
+        - If an active trade is already RUNNING, duplicate messages are strictly blocked.
         """
         if not self.is_configured():
             return {"status": "UNCONFIGURED"}
@@ -311,20 +336,37 @@ class TelegramSignalBot:
         action = analysis.get("setup_action", "WAIT / NO TRADE")
         if action not in ["BUY / LONG", "SELL / SHORT"]:
             return {"status": "NOT_CONFLUENT", "reason": analysis.get("conflict_note", "Oscillators mixed")}
+
+        # 1. Anti-Duplicate: Check if an active trade is already open
+        try:
+            from core.trade_tracker import has_active_trade
+            if has_active_trade(asset, timeframe):
+                return {
+                    "status": "SUPPRESSED_ACTIVE_TRADE",
+                    "message": f"Active trade for {asset} {timeframe} is currently RUNNING. Duplicate signal blocked!"
+                }
+        except Exception:
+            pass
+
+        # 2. History De-Duplication Check
+        history = _load_history()
+        sig_prefix = f"{asset}_{timeframe}_{action}"
+        for h in reversed(history[-10:]):
+            if isinstance(h, str) and h.startswith(sig_prefix):
+                return {"status": "ALREADY_SENT", "key": h}
             
         if not candle_time:
-            candle_time = datetime.now(pytz.timezone('Asia/Phnom_Penh')).strftime('%Y-%m-%d %H:%M')
+            candle_time = datetime.now(pytz.timezone('Asia/Phnom_Penh')).strftime('%Y-%m-%d')
             
-        sig_key = f"{asset}_{timeframe}_{candle_time}_{action}"
-        history = _load_history()
-        
+        sig_key = f"{asset}_{timeframe}_{action}_{candle_time}"
         if sig_key in history:
             return {"status": "ALREADY_SENT", "key": sig_key}
             
-        # Dispatch to Telegram
-        res = self.dispatch_trade_signal(asset, timeframe, analysis, indicator_regime)
+        # Dispatch to Telegram (Sent ONLY ONCE!)
+        res = self.dispatch_trade_signal(asset, timeframe, analysis, indicator_regime, force=False)
         if res.get("status") == "SUCCESS":
             history.append(sig_key)
             _save_history(history)
             return {"status": "AUTO_DISPATCHED", "key": sig_key, "action": action}
+        return res
         return res

@@ -63,8 +63,15 @@ def run_scanner_loop():
     chat_id = cfg.get("telegram_chat_id", "").strip()
     min_score = cfg.get("min_confluence_score", 70)
     interval = cfg.get("scan_interval_seconds", 60)
-    assets = ["BTCUSD", "XAUUSD"]
-    timeframe = cfg.get("timeframe", "15m")
+    
+    # Dual Institutional Scanning Matrix:
+    # 1H (Primary High-Conviction / Low Fakeout) + 15M (Intraday Scalp)
+    scan_targets = [
+        ("BTCUSD", "1h"),
+        ("XAUUSD", "1h"),
+        ("BTCUSD", "15m"),
+        ("XAUUSD", "15m"),
+    ]
     
     # Render / Cloud Port Binding
     port_env = os.environ.get("PORT")
@@ -83,7 +90,8 @@ def run_scanner_loop():
     
     console.print(Panel(
         f"[bold cyan]🦅 PHEARA PRO TRADER AI - AUTO SIGNAL SCANNER[/bold cyan]\n"
-        f"• Assets: [yellow]{', '.join(assets)}[/yellow] | Timeframe: [green]{timeframe}[/green]\n"
+        f"• Assets: [yellow]BTCUSD & XAUUSD[/yellow]\n"
+        f"• Timeframes: [green]1H (Primary Low Fakeout) & 15M (Scalp)[/green]\n"
         f"• Min Confluence Score: [magenta]{min_score}/100[/magenta]\n"
         f"• Scan Interval: [white]{interval} seconds[/white]\n"
         f"• Telegram Bot Status: [{bot_color}]{bot_label}[/{bot_color}]",
@@ -100,9 +108,9 @@ def run_scanner_loop():
     while True:
         try:
             now_str = datetime.now(pytz.timezone('Asia/Phnom_Penh')).strftime('%H:%M:%S')
-            console.print(f"[dim]─── [{now_str} UTC+7] Scanning market order flow ───[/dim]")
+            console.print(f"[dim]─── [{now_str} UTC+7] Scanning market order flow (1H & 15M) ───[/dim]")
             
-            for asset in assets:
+            for asset, timeframe in scan_targets:
                 try:
                     raw_df = fetch_market_data(asset, timeframe)
                     df = calculate_technical_indicators(raw_df)
@@ -114,11 +122,11 @@ def run_scanner_loop():
                         tp_sl_events = monitor_trade_outcomes(asset, timeframe, latest_candle, bot)
                         for ev in tp_sl_events:
                             if "TP" in ev["type"]:
-                                console.print(f"[bold green]🎯 {ev['type']} HIT ALERT DISPATCHED FOR {asset} at {ev['hit_price']}![/bold green]")
+                                console.print(f"[bold green]🎯 {ev['type']} HIT ALERT DISPATCHED FOR {asset} ({timeframe}) at {ev['hit_price']}![/bold green]")
                             elif "SL" in ev["type"]:
-                                console.print(f"[bold red]🛑 SL HIT ALERT DISPATCHED FOR {asset} at {ev['hit_price']}![/bold red]")
+                                console.print(f"[bold red]🛑 SL HIT ALERT DISPATCHED FOR {asset} ({timeframe}) at {ev['hit_price']}![/bold red]")
                             elif "BE" in ev["type"]:
-                                console.print(f"[bold cyan]🛡️ BREAK-EVEN (BE) HIT ALERT DISPATCHED FOR {asset} at {ev['hit_price']}![/bold cyan]")
+                                console.print(f"[bold cyan]🛡️ BREAK-EVEN (BE) HIT ALERT DISPATCHED FOR {asset} ({timeframe}) at {ev['hit_price']}![/bold cyan]")
                     except Exception as trk_err:
                         console.print(f"[dim]Tracking check notice: {trk_err}[/dim]")
                     
@@ -144,9 +152,7 @@ def run_scanner_loop():
                     analysis = analyst.analyze(asset, timeframe, df, indicators, smc_payload)
                     score = analysis["confluence_score"]
                     bias = analysis["bias"]
-                    last_candle_time = str(df.index[-1])
-                    
-                    sig_key = (asset, last_candle_time)
+                    dispatched_key = f"{asset}_{timeframe}"
                     
                     # Check if Setup meets criteria (Strict Multi-Oscillator Confluence Required)
                     action = analysis.get("setup_action", "WAIT / NO TRADE")
@@ -155,32 +161,32 @@ def run_scanner_loop():
                         from core.trade_tracker import has_active_trade, get_active_trade
                         if has_active_trade(asset, timeframe):
                             act = get_active_trade(asset, timeframe)
-                            console.print(f"[dim]{asset}: Position is already RUNNING ({act.get('action')} @ {act.get('entry'):,.2f}). Suppressing duplicate signal until TP/SL outcome.[/dim]")
+                            console.print(f"[dim]{asset} ({timeframe}): Position is already RUNNING ({act.get('action')} @ {act.get('entry'):,.2f}). Suppressing duplicate.[/dim]")
                             continue
 
                         # Anti-Duplicate Guard 2: Send ONLY ONCE per setup direction
-                        if dispatched_signals.get(asset) == action:
-                            console.print(f"[dim]{asset}: Signal ({action}) already sent once. Suppressing duplicate.[/dim]")
+                        if dispatched_signals.get(dispatched_key) == action:
+                            console.print(f"[dim]{asset} ({timeframe}): Signal ({action}) already sent once. Suppressing duplicate.[/dim]")
                             continue
 
-                        console.print(f"[bold green]🚨 GRADE A+ CONFLUENCE SETUP DETECTED FOR {asset} ({score}/100)![/bold green]")
-                        console.print(f"Action: [bold yellow]{action}[/bold yellow] | Entry: {analysis['plan']['entry']} | SL: {analysis['plan']['sl']}")
+                        console.print(f"[bold green]🚨 GRADE A+ CONFLUENCE SETUP DETECTED FOR {asset} ({timeframe}) ({score}/100)![/bold green]")
+                        console.print(f"Action: [bold yellow]{action}[/bold yellow] | Entry: {analysis['plan']['entry']} | SL: {analysis['plan']['sl']} | Target: {analysis['plan']['tp2']}")
                         
                         if bot.is_configured():
                             res = bot.dispatch_trade_signal(asset, timeframe, analysis, indicators)
                             if res.get("status") == "SUCCESS":
-                                console.print(f"[bold green]✅ Single confluent signal dropped into Telegram for {asset}![/bold green]")
-                                dispatched_signals[asset] = action
+                                console.print(f"[bold green]✅ Single confluent signal dropped into Telegram for {asset} ({timeframe})![/bold green]")
+                                dispatched_signals[dispatched_key] = action
                             else:
                                 console.print(f"[bold yellow]⚠️ Blocked from Telegram: {escape(str(res.get('message')))}[/bold yellow]")
                         else:
-                            dispatched_signals[asset] = action
+                            dispatched_signals[dispatched_key] = action
                     else:
                         conflict = analysis.get("conflict_note", "Oscillators mixed")
-                        console.print(f"[dim]{asset}: Standing by (Score {score}/100) — {escape(str(conflict))}[/dim]")
+                        console.print(f"[dim]{asset} ({timeframe}): Standing by (Score {score}/100) — {escape(str(conflict))}[/dim]")
                         
                 except Exception as asset_err:
-                    console.print(f"[red]Error analyzing {asset}: {asset_err}[/red]")
+                    console.print(f"[red]Error analyzing {asset} ({timeframe}): {asset_err}[/red]")
                     
             time.sleep(interval)
             

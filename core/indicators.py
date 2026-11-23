@@ -155,6 +155,38 @@ def analyze_indicator_telemetry(df: pd.DataFrame) -> dict:
         
     dmi_leader = "BUYERS_IN_CONTROL (+DI > -DI)" if plus_di > minus_di else "SELLERS_IN_CONTROL (-DI > +DI)"
     
+    # 5. EMA 20 / EMA 50 Cross & Dynamic Pullback / Touch Detection
+    ema20_above_ema50 = (ema20 > ema50)
+    ema20_below_ema50 = (ema20 < ema50)
+    
+    # Check if price touches or tests EMA 20 or EMA 50 (Within dynamic touch tolerance)
+    recent_bars = df.tail(min(3, len(df)))
+    tol = 0.0020  # 0.20% buffer for touch/retest detection
+    touches_ema20 = False
+    touches_ema50 = False
+    
+    for _, bar in recent_bars.iterrows():
+        b_high = float(bar['High'])
+        b_low = float(bar['Low'])
+        b_close = float(bar['Close'])
+        
+        # Check EMA 20 touch
+        if (b_low <= ema20 * (1.0 + tol)) and (b_high >= ema20 * (1.0 - tol)):
+            touches_ema20 = True
+        # Check EMA 50 touch
+        if (b_low <= ema50 * (1.0 + tol)) and (b_high >= ema50 * (1.0 - tol)):
+            touches_ema50 = True
+            
+    touches_ema_entry_zone = (touches_ema20 or touches_ema50)
+    if touches_ema20 and touches_ema50:
+        ema_touch_label = "TOUCHING_EMA20_AND_EMA50 (High Confluence Entry Zone)"
+    elif touches_ema20:
+        ema_touch_label = "TOUCHING_EMA20 (Fast Momentum Entry Zone)"
+    elif touches_ema50:
+        ema_touch_label = "TOUCHING_EMA50 (Deep Dynamic Support/Resistance Entry Zone)"
+    else:
+        ema_touch_label = "AWAY_FROM_EMA (Awaiting Pullback Touch)"
+
     # Overall Technical Regime
     if is_bullish_stack and price_vs_ema200 == "ABOVE":
         trend_status = "STRONG_BULLISH"
@@ -177,6 +209,12 @@ def analyze_indicator_telemetry(df: pd.DataFrame) -> dict:
         "atr": round(atr, 3),
         "is_bullish_stack": is_bullish_stack,
         "is_bearish_stack": is_bearish_stack,
+        "ema20_above_ema50": ema20_above_ema50,
+        "ema20_below_ema50": ema20_below_ema50,
+        "touches_ema20": touches_ema20,
+        "touches_ema50": touches_ema50,
+        "touches_ema_entry_zone": touches_ema_entry_zone,
+        "ema_touch_label": ema_touch_label,
         "price_vs_ema200": price_vs_ema200,
         "price_vs_ema50": price_vs_ema50,
         "price_vs_ema20": price_vs_ema20,
