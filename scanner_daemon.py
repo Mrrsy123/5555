@@ -151,21 +151,30 @@ def run_scanner_loop():
                     # Check if Setup meets criteria (Strict Multi-Oscillator Confluence Required)
                     action = analysis.get("setup_action", "WAIT / NO TRADE")
                     if action in ["BUY / LONG", "SELL / SHORT"] and score >= min_score:
-                        if sig_key not in dispatched_signals:
-                            console.print(f"[bold green]🚨 GRADE A+ CONFLUENCE SETUP DETECTED FOR {asset} ({score}/100)![/bold green]")
-                            console.print(f"Action: [bold yellow]{action}[/bold yellow] | Entry: {analysis['plan']['entry']} | SL: {analysis['plan']['sl']}")
-                            
-                            if bot.is_configured():
-                                res = bot.dispatch_trade_signal(asset, timeframe, analysis, indicators)
-                                if res.get("status") == "SUCCESS":
-                                    console.print(f"[bold green]✅ Auto dropped confluent signal into Telegram for {asset}![/bold green]")
-                                    dispatched_signals[sig_key] = bias
-                                else:
-                                    console.print(f"[bold yellow]⚠️ Blocked from Telegram: {escape(str(res.get('message')))}[/bold yellow]")
+                        # Anti-Duplicate Guard 1: Suppress if an active trade is already RUNNING
+                        from core.trade_tracker import has_active_trade, get_active_trade
+                        if has_active_trade(asset, timeframe):
+                            act = get_active_trade(asset, timeframe)
+                            console.print(f"[dim]{asset}: Position is already RUNNING ({act.get('action')} @ {act.get('entry'):,.2f}). Suppressing duplicate signal until TP/SL outcome.[/dim]")
+                            continue
+
+                        # Anti-Duplicate Guard 2: Send ONLY ONCE per setup direction
+                        if dispatched_signals.get(asset) == action:
+                            console.print(f"[dim]{asset}: Signal ({action}) already sent once. Suppressing duplicate.[/dim]")
+                            continue
+
+                        console.print(f"[bold green]🚨 GRADE A+ CONFLUENCE SETUP DETECTED FOR {asset} ({score}/100)![/bold green]")
+                        console.print(f"Action: [bold yellow]{action}[/bold yellow] | Entry: {analysis['plan']['entry']} | SL: {analysis['plan']['sl']}")
+                        
+                        if bot.is_configured():
+                            res = bot.dispatch_trade_signal(asset, timeframe, analysis, indicators)
+                            if res.get("status") == "SUCCESS":
+                                console.print(f"[bold green]✅ Single confluent signal dropped into Telegram for {asset}![/bold green]")
+                                dispatched_signals[asset] = action
                             else:
-                                dispatched_signals[sig_key] = bias
+                                console.print(f"[bold yellow]⚠️ Blocked from Telegram: {escape(str(res.get('message')))}[/bold yellow]")
                         else:
-                            console.print(f"[dim]{asset}: Active setup already notified ({bias})[/dim]")
+                            dispatched_signals[asset] = action
                     else:
                         conflict = analysis.get("conflict_note", "Oscillators mixed")
                         console.print(f"[dim]{asset}: Standing by (Score {score}/100) — {escape(str(conflict))}[/dim]")
